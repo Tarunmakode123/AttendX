@@ -16,7 +16,7 @@ const MainLayout = () => {
   const { currentUser, isAdmin } = useAuth();
   const { subjects, periods } = useAttendance();
 
-  const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'marker' | 'dashboard' | 'trends' | 'timetable' | 'roster'
+  const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'marker' | 'timetable' | 'dashboard' | 'trends' | 'roster'
   const [selectedClass, setSelectedClass] = useState('CSE-A');
   const [selectedSubjectId, setSelectedSubjectId] = useState(subjects[0]?.id || 'sub-301');
   const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id || 'p1');
@@ -69,6 +69,10 @@ const MainLayout = () => {
           </div>
         )}
 
+        {activeTab === 'timetable' && (
+          <TimetableManagement />
+        )}
+
         {activeTab === 'dashboard' && (
           <DailyDashboard
             selectedClass={selectedClass}
@@ -83,10 +87,6 @@ const MainLayout = () => {
             selectedClass={selectedClass}
             setSelectedClass={setSelectedClass}
           />
-        )}
-
-        {activeTab === 'timetable' && isAdmin && (
-          <TimetableManagement />
         )}
 
         {activeTab === 'roster' && isAdmin && (

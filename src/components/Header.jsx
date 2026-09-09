@@ -61,6 +61,19 @@ export const Header = ({ activeTab, setActiveTab }) => {
               <span>Take Attendance</span>
             </button>
 
+            {/* TIMETABLE TAB FOR ALL USERS */}
+            <button
+              onClick={() => setActiveTab('timetable')}
+              className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'timetable'
+                  ? 'bg-brand-50 text-brand-600 font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Timetable</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -86,31 +99,17 @@ export const Header = ({ activeTab, setActiveTab }) => {
             </button>
 
             {isAdmin && (
-              <>
-                <button
-                  onClick={() => setActiveTab('timetable')}
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === 'timetable'
-                      ? 'bg-brand-50 text-brand-600 font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Timetable</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('roster')}
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === 'roster'
-                      ? 'bg-brand-50 text-brand-600 font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Roster</span>
-                </button>
-              </>
+              <button
+                onClick={() => setActiveTab('roster')}
+                className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'roster'
+                    ? 'bg-brand-50 text-brand-600 font-semibold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Roster</span>
+              </button>
             )}
           </nav>
 
@@ -118,7 +117,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
           <div className="flex items-center space-x-3">
             {isDemoModeEnabled && (
               <div className="hidden lg:flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
-                <span className="text-[10px] font-bold uppercase text-slate-500 px-2">Demo:</span>
+                <span className="text-[10px] font-bold uppercase text-slate-500 px-2">Demo Persona:</span>
                 <select
                   value={currentUser?.id}
                   onChange={(e) => switchDemoUser(e.target.value)}
@@ -167,7 +166,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
         <div className="flex md:hidden items-center justify-around border-t border-slate-100 py-2">
           <button
             onClick={() => setActiveTab('schedule')}
-            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2.5 rounded-lg ${
+            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2 rounded-lg ${
               activeTab === 'schedule' ? 'text-brand-600 bg-brand-50' : 'text-slate-600'
             }`}
           >
@@ -176,7 +175,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
           </button>
           <button
             onClick={() => setActiveTab('marker')}
-            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2.5 rounded-lg ${
+            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2 rounded-lg ${
               activeTab === 'marker' ? 'text-brand-600 bg-brand-50' : 'text-slate-600'
             }`}
           >
@@ -184,8 +183,17 @@ export const Header = ({ activeTab, setActiveTab }) => {
             <span>Mark</span>
           </button>
           <button
+            onClick={() => setActiveTab('timetable')}
+            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2 rounded-lg ${
+              activeTab === 'timetable' ? 'text-brand-600 bg-brand-50' : 'text-slate-600'
+            }`}
+          >
+            <Calendar className="w-4 h-4 mb-0.5" />
+            <span>Timetable</span>
+          </button>
+          <button
             onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2.5 rounded-lg ${
+            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2 rounded-lg ${
               activeTab === 'dashboard' ? 'text-brand-600 bg-brand-50' : 'text-slate-600'
             }`}
           >
@@ -194,12 +202,12 @@ export const Header = ({ activeTab, setActiveTab }) => {
           </button>
           <button
             onClick={() => setActiveTab('trends')}
-            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2.5 rounded-lg ${
+            className={`flex flex-col items-center text-[10px] font-bold py-1 px-2 rounded-lg ${
               activeTab === 'trends' ? 'text-brand-600 bg-brand-50' : 'text-slate-600'
             }`}
           >
             <TrendingUp className="w-4 h-4 mb-0.5" />
-            <span>Ranks</span>
+            <span>Leaderboard</span>
           </button>
         </div>
 
