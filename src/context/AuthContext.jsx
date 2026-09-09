@@ -3,45 +3,73 @@ import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
 
 const AuthContext = createContext();
 
-// Pre-configured Demo Users for instant testing
+// 8 Realistic Fictional Indian Engineering College Faculty Personas
 export const DEMO_USERS = [
   {
-    id: 'fac-001',
-    name: 'Prof. Alan Turing',
-    email: 'alan@college.edu',
+    id: 'fac-101',
+    faculty_id: 'FAC001',
+    name: 'Dr. Amit Sharma',
+    email: 'amit.sharma@college.edu',
     role: 'faculty',
-    department: 'Computer Science',
-    assigned_sections: ['CS-A', 'CS-B']
+    department: 'Computer Science & Engineering',
+    subjects: ['Artificial Intelligence', 'Software Engineering']
   },
   {
-    id: 'fac-002',
-    name: 'Prof. Priya Sharma',
-    email: 'priya@college.edu',
+    id: 'fac-102',
+    faculty_id: 'FAC002',
+    name: 'Prof. Neha Verma',
+    email: 'neha.verma@college.edu',
     role: 'faculty',
-    department: 'Computer Science',
-    assigned_sections: ['CS-A', 'EC-A']
+    department: 'Computer Science & Engineering',
+    subjects: ['Database Management Systems']
+  },
+  {
+    id: 'fac-103',
+    faculty_id: 'FAC003',
+    name: 'Dr. Rahul Joshi',
+    email: 'rahul.joshi@college.edu',
+    role: 'faculty',
+    department: 'Computer Science & Engineering',
+    subjects: ['Operating Systems', 'Compiler Design']
+  },
+  {
+    id: 'fac-104',
+    faculty_id: 'FAC004',
+    name: 'Prof. Priya Mehta',
+    email: 'priya.mehta@college.edu',
+    role: 'faculty',
+    department: 'Computer Science & Engineering',
+    subjects: ['Computer Networks']
+  },
+  {
+    id: 'fac-105',
+    faculty_id: 'FAC005',
+    name: 'Prof. Vikram Singh',
+    email: 'vikram.singh@college.edu',
+    role: 'faculty',
+    department: 'Computer Science & Engineering',
+    subjects: ['Machine Learning']
   },
   {
     id: 'admin-001',
+    faculty_id: 'HOD001',
     name: 'Dr. Rajesh Sharma (HOD)',
     email: 'hod.cs@college.edu',
     role: 'admin',
     department: 'Computer Science & Engineering',
-    assigned_sections: ['CS-A', 'CS-B', 'EC-A', 'ME-A']
+    subjects: ['All CSE Subjects']
   }
 ];
 
 export const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(DEMO_USERS[0]); // Default to Prof. Alan
+  const [currentUser, setCurrentUser] = useState(DEMO_USERS[0]); // Default to Dr. Amit Sharma
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
-  // Check if Demo Mode switcher is enabled (defaults to true in dev preview unless explicitly disabled)
   const isDemoModeEnabled = import.meta.env.VITE_ENABLE_DEMO_MODE !== 'false';
 
   useEffect(() => {
     if (isLiveSupabaseConfigured && supabase) {
-      // Fetch initial session from Supabase Auth if live credentials exist
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           fetchFacultyProfile(session.user.id, session.user.email);
@@ -72,12 +100,13 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (error || !data) {
-        // Fallback profile if user exists in Auth but not in faculty table yet
         setCurrentUser({
           id: userId,
+          faculty_id: 'FAC-LIVE',
           name: email.split('@')[0],
           email: email,
-          role: 'faculty'
+          role: 'faculty',
+          department: 'Computer Science & Engineering'
         });
       } else {
         setCurrentUser(data);
@@ -94,26 +123,22 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       if (isLiveSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         return data;
       } else {
-        // Mock Auth Fallback
         const foundUser = DEMO_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (foundUser) {
           setCurrentUser(foundUser);
           return { user: foundUser };
         } else {
-          // Allow custom faculty login in mock mode
           const newUser = {
             id: 'fac-' + Date.now(),
+            faculty_id: 'FAC-' + Math.floor(100 + Math.random() * 900),
             name: email.split('@')[0],
             email: email,
             role: email.includes('admin') || email.includes('hod') ? 'admin' : 'faculty',
-            department: 'Computer Science'
+            department: 'Computer Science & Engineering'
           };
           setCurrentUser(newUser);
           return { user: newUser };

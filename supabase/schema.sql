@@ -1,5 +1,6 @@
 -- ========================================================
 -- AttendX — Attendance & Bunk Detection Tool Schema DDL
+-- Phase 2 — Timetable & Hardened Bunk Classification
 -- ========================================================
 
 -- Enable pgcrypto for UUID generation if needed
@@ -9,8 +10,9 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS students (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   roll_number VARCHAR(50) NOT NULL UNIQUE,
+  enrollment_number VARCHAR(50) NOT NULL UNIQUE,
   name VARCHAR(255) NOT NULL,
-  class_section VARCHAR(50) NOT NULL, -- e.g. 'CS-A', 'CS-B'
+  class_section VARCHAR(50) NOT NULL, -- e.g. 'CSE-A', 'CSE-B'
   year INT NOT NULL DEFAULT 3,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -18,9 +20,11 @@ CREATE TABLE IF NOT EXISTS students (
 -- 2. FACULTY TABLE (Linked to Supabase auth.users)
 CREATE TABLE IF NOT EXISTS faculty (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- should match auth.users.id
+  faculty_id VARCHAR(50) NOT NULL UNIQUE,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   role VARCHAR(20) NOT NULL CHECK (role IN ('faculty', 'admin')) DEFAULT 'faculty',
+  department VARCHAR(100) DEFAULT 'Computer Science & Engineering',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -53,7 +57,19 @@ CREATE TABLE IF NOT EXISTS lecture_periods (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. ATTENDANCE RECORDS TABLE (CORE)
+-- 6. TIMETABLE SCHEDULE TABLE
+CREATE TABLE IF NOT EXISTS timetable (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  day_of_week VARCHAR(15) NOT NULL CHECK (day_of_week IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday')),
+  period_id UUID NOT NULL REFERENCES lecture_periods(id) ON DELETE CASCADE,
+  subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  faculty_id UUID NOT NULL REFERENCES faculty(id) ON DELETE CASCADE,
+  class_section VARCHAR(50) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT unique_schedule_slot UNIQUE (day_of_week, period_id, class_section)
+);
+
+-- 7. ATTENDANCE RECORDS TABLE (CORE)
 CREATE TABLE IF NOT EXISTS attendance_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -104,9 +120,9 @@ ALTER TABLE faculty ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE faculty_subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lecture_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timetable ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
 
--- Helper function to check if current authenticated user is an Admin
 CREATE OR REPLACE FUNCTION is_admin() RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
@@ -116,18 +132,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Public Read Policies for authenticated users
+-- Public Read Policies
 CREATE POLICY public_read_students ON students FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_periods ON lecture_periods FOR SELECT USING (true);
 CREATE POLICY public_read_subjects ON subjects FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_faculty ON faculty FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_faculty_subjects ON faculty_subjects FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY public_read_timetable ON timetable FOR SELECT USING (auth.role() = 'authenticated');
 
--- Admin CRUD Policies
+-- Admin Manage Policies
 CREATE POLICY admin_manage_students ON students FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_faculty ON faculty FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_subjects ON subjects FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_faculty_subjects ON faculty_subjects FOR ALL USING (is_admin());
+CREATE POLICY admin_manage_timetable ON timetable FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_attendance ON attendance_records FOR ALL USING (is_admin());
 
 -- Faculty Attendance Read
@@ -159,34 +177,21 @@ CREATE POLICY faculty_update_attendance ON attendance_records
   );
 
 -- ========================================================
--- BUNK DETECTION VIEW
+-- BUNK DETECTION VIEW (Live SQL Aggregate)
 -- ========================================================
 CREATE OR REPLACE VIEW bunk_flags AS
 SELECT 
   ar.student_id,
   ar.date,
   s.roll_number,
+  s.enrollment_number,
   s.name AS student_name,
   s.class_section,
   COUNT(CASE WHEN ar.status = 'present' THEN 1 END) AS present_periods,
   COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) AS absent_periods,
   COUNT(ar.id) AS total_marked_periods,
-  ARRAY_AGG(DISTINCT lp.label ORDER BY lp.label) FILTER (WHERE ar.status = 'absent') AS absent_period_labels,
-  ARRAY_AGG(DISTINCT lp.label ORDER BY lp.label) FILTER (WHERE ar.status = 'present') AS present_period_labels,
   (COUNT(CASE WHEN ar.status = 'present' THEN 1 END) > 0 AND 
    COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) > 0) AS is_flagged
 FROM attendance_records ar
 JOIN students s ON s.id = ar.student_id
-JOIN lecture_periods lp ON lp.id = ar.period_id
-GROUP BY ar.student_id, ar.date, s.roll_number, s.name, s.class_section;
-
--- ========================================================
--- INITIAL SEED DATA FOR TESTING / MVP DEPLOYMENT
--- ========================================================
-INSERT INTO lecture_periods (period_number, label, start_time, end_time) VALUES
-(1, 'Period 1 (09:00 - 10:00)', '09:00:00', '10:00:00'),
-(2, 'Period 2 (10:00 - 11:00)', '10:00:00', '11:00:00'),
-(3, 'Period 3 (11:15 - 12:15)', '11:15:00', '12:15:00'),
-(4, 'Period 4 (01:15 - 02:15)', '13:15:00', '14:15:00'),
-(5, 'Period 5 (02:15 - 03:15)', '14:15:00', '15:15:00')
-ON CONFLICT (period_number) DO NOTHING;
+GROUP BY ar.student_id, ar.date, s.roll_number, s.enrollment_number, s.name, s.class_section;
