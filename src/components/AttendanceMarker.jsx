@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAttendance } from '../context/AttendanceContext';
 import { useAuth } from '../context/AuthContext';
-import { Search, CheckCircle, XCircle, Lock, Send, AlertCircle } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Lock, Send, AlertCircle, ShieldAlert, CheckCircle2, User } from 'lucide-react';
 
 export const AttendanceMarker = ({
   selectedClass,
@@ -14,10 +14,10 @@ export const AttendanceMarker = ({
     subjects,
     periods,
     attendanceRecords,
-    isPeriodSubmitted,
+    getLectureSession,
     submitAttendance
   } = useAttendance();
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, isAdmin, DEMO_USERS } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [markMap, setMarkMap] = useState({});
@@ -29,13 +29,23 @@ export const AttendanceMarker = ({
   const currentSubject = subjects.find(s => s.id === selectedSubjectId);
   const currentPeriod = periods.find(p => p.id === selectedPeriodId);
 
-  const isLocked = selectedSubjectId && selectedPeriodId && isPeriodSubmitted(selectedSubjectId, selectedPeriodId, selectedDate);
+  // Check if session already exists for DATE + CLASS_SECTION + PERIOD_ID (Part 7 & 8)
+  const existingSession = getLectureSession(selectedDate, selectedClass, selectedPeriodId);
+  const isLocked = Boolean(existingSession);
+
+  // Get session submitter name
+  const submitterObj = existingSession ? DEMO_USERS?.find(u => u.id === existingSession.faculty_id) : null;
+  const submitterName = submitterObj ? submitterObj.name : 'Faculty';
+
+  // Get submitted records if session exists
+  const existingRecs = existingSession
+    ? attendanceRecords.filter(r => r.lecture_session_id === existingSession.id)
+    : [];
+
+  const existingPresentCount = existingRecs.filter(r => r.status === 'present').length;
+  const existingAbsentCount = existingRecs.filter(r => r.status === 'absent').length;
 
   useEffect(() => {
-    const existingRecs = attendanceRecords.filter(
-      r => r.subject_id === selectedSubjectId && r.period_id === selectedPeriodId && r.date === selectedDate
-    );
-
     const initialMap = {};
     classStudents.forEach(st => {
       const match = existingRecs.find(r => r.student_id === st.id);
@@ -71,8 +81,8 @@ export const AttendanceMarker = ({
     setMarkMap(updated);
   };
 
-  const presentCount = Object.values(markMap).filter(val => val === 'present').length;
-  const absentCount = Object.values(markMap).filter(val => val === 'absent').length;
+  const presentCount = isLocked ? existingPresentCount : Object.values(markMap).filter(val => val === 'present').length;
+  const absentCount = isLocked ? existingAbsentCount : Object.values(markMap).filter(val => val === 'absent').length;
 
   const filteredStudents = classStudents.filter(s =>
     s.roll_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -107,7 +117,94 @@ export const AttendanceMarker = ({
   return (
     <div className="space-y-4">
       
-      {/* Real-Time Counter & Action Bar */}
+      {/* Session Context Header Banner (Part 6) */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <div className="text-[10px] font-black uppercase text-brand-600 tracking-wider">
+              Lecture Session Context
+            </div>
+            <h3 className="text-base font-black text-slate-900">
+              {currentSubject?.name || 'Subject'} ({currentSubject?.code})
+            </h3>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="px-3 py-1 rounded-xl bg-brand-100 text-brand-800 font-extrabold text-xs">
+              Section {selectedClass}
+            </span>
+            <span className="px-3 py-1 rounded-xl bg-slate-100 text-slate-800 font-bold text-xs">
+              {currentPeriod?.label}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between text-xs font-semibold text-slate-500 pt-1">
+          <span>Date: <strong className="text-slate-800">{selectedDate}</strong></span>
+          <span>Instructor: <strong className="text-slate-800">{currentUser?.name}</strong></span>
+        </div>
+      </div>
+
+      {/* Part 7 & 8: Duplicate Session Block Card if already submitted */}
+      {isLocked && (
+        <div className="bg-amber-50 border border-amber-300 p-5 rounded-2xl space-y-3 text-amber-950">
+          <div className="flex items-start space-x-3">
+            <Lock className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-extrabold text-sm text-amber-900">
+                Attendance Already Submitted & Locked
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Attendance for <strong>{selectedClass}</strong> on <strong>{selectedDate}</strong> ({currentPeriod?.label}) has already been recorded by <strong>{submitterName}</strong>.
+              </p>
+            </div>
+          </div>
+
+          {/* Session Statistics Box */}
+          <div className="grid grid-cols-3 gap-2 bg-white/90 p-3 rounded-xl border border-amber-200 text-center text-xs">
+            <div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase">Total Enrolled</div>
+              <div className="text-lg font-black text-slate-900">{classStudents.length}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-emerald-700 font-bold uppercase">Present</div>
+              <div className="text-lg font-black text-emerald-900">{existingPresentCount}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-red-700 font-bold uppercase">Absent</div>
+              <div className="text-lg font-black text-red-900">{existingAbsentCount}</div>
+            </div>
+          </div>
+
+          {isAdmin && (
+            <div className="text-center text-xs font-bold text-amber-800 bg-amber-200/80 p-2 rounded-xl">
+              Admin Override Mode Available on Daily Matrix
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Success Banner */}
+      {submittedSuccess && (
+        <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl flex items-center space-x-3 text-emerald-900">
+          <CheckCircle className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+          <div>
+            <div className="font-bold text-sm">Attendance Submitted & Locked!</div>
+            <div className="text-xs text-emerald-700">
+              Lecture session saved under UNIQUE(date, class_section, period_id) database constraint.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center space-x-3 text-red-900">
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+          <div className="text-sm font-medium">{errorMessage}</div>
+        </div>
+      )}
+
+      {/* Live Counter & Action Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3.5 py-1.5 rounded-xl font-bold text-sm">
@@ -118,10 +215,6 @@ export const AttendanceMarker = ({
           <div className="flex items-center space-x-1.5 bg-red-50 text-red-800 border border-red-200 px-3.5 py-1.5 rounded-xl font-bold text-sm">
             <XCircle className="w-4 h-4 text-bunk-absentRed" />
             <span>{absentCount} Absent</span>
-          </div>
-
-          <div className="hidden sm:block text-xs font-semibold text-slate-500">
-            Enrolled: {classStudents.length} Students
           </div>
         </div>
 
@@ -143,44 +236,6 @@ export const AttendanceMarker = ({
         )}
       </div>
 
-      {isLocked && (
-        <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex items-center justify-between text-amber-900">
-          <div className="flex items-center space-x-3">
-            <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
-            <div>
-              <div className="font-bold text-sm">Attendance Submitted & Locked</div>
-              <div className="text-xs text-amber-800">
-                Attendance for {currentSubject?.name} ({currentPeriod?.label}) on {selectedDate} is locked to prevent duplicate submissions.
-              </div>
-            </div>
-          </div>
-          {isAdmin && (
-            <span className="text-xs font-bold text-amber-800 bg-amber-200 px-2.5 py-1 rounded-lg">
-              Admin Edit Mode Active
-            </span>
-          )}
-        </div>
-      )}
-
-      {submittedSuccess && (
-        <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl flex items-center space-x-3 text-emerald-900">
-          <CheckCircle className="w-6 h-6 text-emerald-600 flex-shrink-0" />
-          <div>
-            <div className="font-bold text-sm">Attendance Submitted Successfully!</div>
-            <div className="text-xs text-emerald-700">
-              Period attendance locked. Real-time bunk flags generated on Daily Analysis.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center space-x-3 text-red-900">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-          <div className="text-sm font-medium">{errorMessage}</div>
-        </div>
-      )}
-
       {/* Search Filter Box */}
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -190,7 +245,7 @@ export const AttendanceMarker = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search student name or roll number (e.g. 23CSE001, Rahul Sharma)..."
+          placeholder="Search student name or roll number..."
           className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm font-medium shadow-xs"
         />
       </div>
@@ -199,62 +254,58 @@ export const AttendanceMarker = ({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
           <span>Section Roster ({filteredStudents.length} Students)</span>
-          <span>Tap row to toggle Absent / Present</span>
+          <span>{isLocked ? 'View Only (Submitted)' : 'Tap row to toggle Absent / Present'}</span>
         </div>
 
-        {filteredStudents.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-sm">
-            No students found matching "{searchQuery}" in {selectedClass}.
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100 max-h-[550px] overflow-y-auto custom-scrollbar">
-            {filteredStudents.map(student => {
-              const isAbsent = markMap[student.id] === 'absent';
+        <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto custom-scrollbar">
+          {filteredStudents.map(student => {
+            const isAbsent = markMap[student.id] === 'absent';
 
-              return (
-                <div
-                  key={student.id}
-                  onClick={() => toggleStatus(student.id)}
-                  className={`p-4 flex items-center justify-between cursor-pointer select-none transition-all ${
-                    isAbsent
-                      ? 'bg-red-50/80 hover:bg-red-100/80 border-l-4 border-bunk-absentRed'
-                      : 'hover:bg-slate-50 border-l-4 border-emerald-500'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
-                      isAbsent ? 'bg-red-200 text-red-900' : 'bg-emerald-100 text-emerald-900'
-                    }`}>
-                      {student.roll_number.slice(-3)}
-                    </div>
-                    <div>
-                      <div className="text-sm font-extrabold text-slate-900">
-                        {student.name}
-                      </div>
-                      <div className="text-xs font-mono font-semibold text-slate-500">
-                        Roll: {student.roll_number} {student.enrollment_number && `• EN: ${student.enrollment_number}`}
-                      </div>
-                    </div>
+            return (
+              <div
+                key={student.id}
+                onClick={() => toggleStatus(student.id)}
+                className={`p-4 flex items-center justify-between ${
+                  isLocked ? 'cursor-default' : 'cursor-pointer select-none'
+                } transition-all ${
+                  isAbsent
+                    ? 'bg-red-50/80 border-l-4 border-bunk-absentRed'
+                    : 'hover:bg-slate-50 border-l-4 border-emerald-500'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
+                    isAbsent ? 'bg-red-200 text-red-900' : 'bg-emerald-100 text-emerald-900'
+                  }`}>
+                    {student.roll_number.slice(-3)}
                   </div>
-
                   <div>
-                    {isAbsent ? (
-                      <span className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-bunk-absentRed text-white font-black text-xs shadow-xs">
-                        <XCircle className="w-4 h-4" />
-                        <span>ABSENT</span>
-                      </span>
-                    ) : (
-                      <span className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs">
-                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                        <span>PRESENT</span>
-                      </span>
-                    )}
+                    <div className="text-sm font-extrabold text-slate-900">
+                      {student.name}
+                    </div>
+                    <div className="text-xs font-mono font-semibold text-slate-500">
+                      Roll: {student.roll_number} {student.enrollment_number && `• EN: ${student.enrollment_number}`}
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                <div>
+                  {isAbsent ? (
+                    <span className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-bunk-absentRed text-white font-black text-xs shadow-xs">
+                      <XCircle className="w-4 h-4" />
+                      <span>ABSENT</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      <span>PRESENT</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {!isLocked && (
@@ -267,7 +318,7 @@ export const AttendanceMarker = ({
             <Send className="w-5 h-5" />
             <span>
               {submitting
-                ? 'Submitting...'
+                ? 'Submitting Session...'
                 : `Submit Attendance (${presentCount} Present / ${absentCount} Absent)`}
             </span>
           </button>

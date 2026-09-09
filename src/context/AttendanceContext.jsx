@@ -18,30 +18,55 @@ export const AttendanceProvider = ({ children }) => {
   const [facultySubjects, setFacultySubjects] = useState(SYNTHETIC_FACULTY_SUBJECTS);
   const [timetable, setTimetable] = useState(SYNTHETIC_TIMETABLE);
 
-  // Initialize 124 Synthetic Students (CSE-A & CSE-B)
   const [students, setStudents] = useState(() => {
-    const saved = localStorage.getItem('attendx_synthetic_students_v2');
+    const saved = localStorage.getItem('attendx_hardened_students_v3');
     return saved ? JSON.parse(saved) : generateSyntheticStudents();
   });
 
-  // Initialize 4-Week Deterministic Attendance History
-  const [attendanceRecords, setAttendanceRecords] = useState(() => {
-    const saved = localStorage.getItem('attendx_synthetic_records_v2');
+  // Lecture Sessions State (UNIQUE(date, class_section, period_id))
+  const [lectureSessions, setLectureSessions] = useState(() => {
+    const saved = localStorage.getItem('attendx_hardened_sessions_v3');
     if (saved) return JSON.parse(saved);
     const initialStudents = generateSyntheticStudents();
-    return generateSyntheticAttendanceHistory(initialStudents);
+    const { sessions } = generateSyntheticAttendanceHistory(initialStudents);
+    return sessions;
   });
 
-  // Persist local changes
+  // Attendance Records State (references lecture_session_id)
+  const [attendanceRecords, setAttendanceRecords] = useState(() => {
+    const saved = localStorage.getItem('attendx_hardened_records_v3');
+    if (saved) return JSON.parse(saved);
+    const initialStudents = generateSyntheticStudents();
+    const { records } = generateSyntheticAttendanceHistory(initialStudents);
+    return records;
+  });
+
   useEffect(() => {
-    localStorage.setItem('attendx_synthetic_students_v2', JSON.stringify(students));
+    localStorage.setItem('attendx_hardened_students_v3', JSON.stringify(students));
   }, [students]);
 
   useEffect(() => {
-    localStorage.setItem('attendx_synthetic_records_v2', JSON.stringify(attendanceRecords));
+    localStorage.setItem('attendx_hardened_sessions_v3', JSON.stringify(lectureSessions));
+  }, [lectureSessions]);
+
+  useEffect(() => {
+    localStorage.setItem('attendx_hardened_records_v3', JSON.stringify(attendanceRecords));
   }, [attendanceRecords]);
 
-  // Helper: Get expected scheduled periods from timetable for a class & date
+  // Find existing lecture session by (date, class_section, period_id)
+  const getLectureSession = (dateStr, classSection, periodId) => {
+    return lectureSessions.find(
+      s => s.date === dateStr && s.class_section === classSection && s.period_id === periodId
+    );
+  };
+
+  const isPeriodSubmitted = (subjectId, periodId, date, classSection) => {
+    if (classSection) {
+      return Boolean(getLectureSession(date, classSection, periodId));
+    }
+    return lectureSessions.some(s => s.period_id === periodId && s.date === date && s.subject_id === subjectId);
+  };
+
   const getExpectedPeriods = (classSection, dateStr) => {
     const dateObj = new Date(dateStr);
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -62,7 +87,6 @@ export const AttendanceProvider = ({ children }) => {
     }).sort((a, b) => (a.period?.period_number || 0) - (b.period?.period_number || 0));
   };
 
-  // Helper: Get faculty schedule for today
   const getFacultyTodaySchedule = (facultyId, dateStr = new Date().toISOString().split('T')[0]) => {
     const dateObj = new Date(dateStr);
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -70,7 +94,7 @@ export const AttendanceProvider = ({ children }) => {
 
     const scheduledSlots = timetable.filter(tt => {
       if (tt.day_of_week !== dayName) return false;
-      if (facultyId === 'admin-001') return true; // HOD sees all
+      if (facultyId === 'admin-001') return true;
       return tt.faculty_id === facultyId;
     });
 
@@ -79,9 +103,7 @@ export const AttendanceProvider = ({ children }) => {
       const subjectObj = subjects.find(s => s.id === slot.subject_id);
       const sectionStudents = students.filter(s => s.class_section === slot.class_section);
 
-      const isSubmitted = attendanceRecords.some(
-        r => r.subject_id === slot.subject_id && r.period_id === slot.period_id && r.date === dateStr
-      );
+      const existingSession = getLectureSession(dateStr, slot.class_section, slot.period_id);
 
       return {
         slotId: slot.id,
@@ -89,53 +111,71 @@ export const AttendanceProvider = ({ children }) => {
         subject: subjectObj,
         period: periodObj,
         date: dateStr,
+        room_no: slot.room_no || 'Room 301',
         studentCount: sectionStudents.length,
-        isSubmitted
+        isSubmitted: Boolean(existingSession),
+        session: existingSession
       };
     }).sort((a, b) => (a.period?.period_number || 0) - (b.period?.period_number || 0));
   };
 
-  const isPeriodSubmitted = (subjectId, periodId, date) => {
-    return attendanceRecords.some(
-      r => r.subject_id === subjectId && r.period_id === periodId && r.date === date
-    );
-  };
-
+  // Submit New Attendance Session (Enforces UNIQUE(date, class_section, period_id))
   const submitAttendance = async ({ classSection, subjectId, facultyId, periodId, date, markMap }) => {
+    // 1. Check if session already exists for this DATE + CLASS_SECTION + PERIOD_ID
+    const existingSession = getLectureSession(date, classSection, periodId);
+    if (existingSession) {
+      throw new Error(`Attendance for ${classSection} on ${date} (Period ${periodId}) has ALREADY been submitted! Duplicate submission blocked.`);
+    }
+
+    // 2. Validate faculty assignment / timetable slot
     const isAssigned = facultySubjects.some(
       fs => fs.faculty_id === facultyId && fs.subject_id === subjectId
     );
     if (!isAssigned && facultyId !== 'admin-001') {
-      throw new Error('Faculty is not assigned to teach this subject (DB RLS check)');
+      throw new Error('Faculty is not authorized to submit attendance for this subject (DB RLS Policy)');
     }
 
-    const classStudents = students.filter(s => s.class_section === classSection);
-    const newRecords = classStudents.map(student => ({
-      id: `rec-${Date.now()}-${student.id}-${periodId}`,
-      student_id: student.id,
+    // 3. Create Lecture Session Entity
+    const sessionId = `sess-${classSection}-${periodId}-${date}`;
+    const newSession = {
+      id: sessionId,
+      date,
+      class_section: classSection,
+      period_id: periodId,
       subject_id: subjectId,
       faculty_id: facultyId,
-      period_id: periodId,
-      date: date,
+      created_at: new Date().toISOString()
+    };
+
+    // 4. Create Attendance Records for enrolled students
+    const classStudents = students.filter(s => s.class_section === classSection);
+    const newRecords = classStudents.map(student => ({
+      id: `rec-${Date.now()}-${student.id}-${sessionId}`,
+      lecture_session_id: sessionId,
+      student_id: student.id,
       status: markMap[student.id] || 'present',
       is_locked: true,
       is_edited: false,
       created_at: new Date().toISOString()
     }));
 
-    const updated = attendanceRecords.filter(
-      r => !(r.subject_id === subjectId && r.period_id === periodId && r.date === date)
-    ).concat(newRecords);
+    setLectureSessions(prev => [...prev, newSession]);
+    setAttendanceRecords(prev => [...prev, ...newRecords]);
 
-    setAttendanceRecords(updated);
     return { success: true, count: newRecords.length };
   };
 
-  const unlockAndEditPeriod = async ({ subjectId, periodId, date, updatedMarks, adminId }) => {
+  // Admin Override with Audit Trail
+  const unlockAndEditPeriod = async ({ subjectId, periodId, date, classSection, updatedMarks, adminId }) => {
+    const session = getLectureSession(date, classSection, periodId);
+    if (!session) {
+      throw new Error('No lecture session found to edit.');
+    }
+
     const nowIso = new Date().toISOString();
 
-    const updated = attendanceRecords.map(r => {
-      if (r.subject_id === subjectId && r.period_id === periodId && r.date === date) {
+    const updatedRecords = attendanceRecords.map(r => {
+      if (r.lecture_session_id === session.id) {
         const newStatus = updatedMarks[r.student_id];
         if (newStatus && newStatus !== r.status) {
           return {
@@ -152,7 +192,7 @@ export const AttendanceProvider = ({ children }) => {
       return r;
     });
 
-    setAttendanceRecords(updated);
+    setAttendanceRecords(updatedRecords);
     return { success: true };
   };
 
@@ -160,17 +200,13 @@ export const AttendanceProvider = ({ children }) => {
   const getDailyMatrix = (classSection, dateStr) => {
     const classStudents = students.filter(s => s.class_section === classSection);
     const expectedSlots = getExpectedPeriods(classSection, dateStr);
-    const dateRecords = attendanceRecords.filter(r => r.date === dateStr);
 
-    // Active periods that have attendance records marked
-    const activePeriodIds = Array.from(
-      new Set(
-        dateRecords
-          .filter(r => classStudents.some(s => s.id === r.student_id))
-          .map(r => r.period_id)
-      )
+    // Get all completed sessions for this class and date
+    const daySessions = lectureSessions.filter(
+      s => s.date === dateStr && s.class_section === classSection
     );
 
+    const activePeriodIds = daySessions.map(s => s.period_id);
     const activePeriods = periods
       .filter(p => activePeriodIds.includes(p.id))
       .sort((a, b) => a.period_number - b.period_number);
@@ -181,33 +217,33 @@ export const AttendanceProvider = ({ children }) => {
     let totalNotMarkedYet = 0;
 
     const rows = classStudents.map(student => {
-      const studentRecs = dateRecords.filter(r => r.student_id === student.id);
-      
       const periodStatusMap = {};
       let presentCount = 0;
       let absentCount = 0;
+      let markedCount = 0;
 
-      studentRecs.forEach(r => {
-        periodStatusMap[r.period_id] = {
-          status: r.status,
-          is_edited: r.is_edited,
-          original_status: r.original_status,
-          edited_at: r.edited_at
-        };
-        if (r.status === 'present') presentCount++;
-        if (r.status === 'absent') absentCount++;
+      daySessions.forEach(session => {
+        const rec = attendanceRecords.find(
+          r => r.lecture_session_id === session.id && r.student_id === student.id
+        );
+        if (rec) {
+          markedCount++;
+          periodStatusMap[session.period_id] = {
+            status: rec.status,
+            is_edited: rec.is_edited,
+            original_status: rec.original_status,
+            edited_at: rec.edited_at
+          };
+          if (rec.status === 'present') presentCount++;
+          if (rec.status === 'absent') absentCount++;
+        }
       });
 
-      // Bunk Rules Evaluation:
-      // Rule A: Full Day Present
-      // Rule B: Full Day Absent -> FULL_DAY_ABSENCE (Not bunk!)
-      // Rule C: At least 1 Present AND at least 1 Absent -> PARTIAL_DAY_ABSENCE ("Possible Bunk / Irregular Attendance")
-      // Rule D: Not yet marked -> NOT_YET_MARKED
       let statusCategory = 'NOT_YET_MARKED';
 
-      if (studentRecs.length > 0) {
+      if (markedCount > 0) {
         if (presentCount > 0 && absentCount > 0) {
-          statusCategory = 'PARTIAL_DAY_ABSENCE'; // BUNK FLAGGED!
+          statusCategory = 'PARTIAL_DAY_ABSENCE';
           totalPartialBunks++;
         } else if (absentCount > 0 && presentCount === 0) {
           statusCategory = 'FULL_DAY_ABSENCE';
@@ -225,7 +261,7 @@ export const AttendanceProvider = ({ children }) => {
         periodStatusMap,
         presentCount,
         absentCount,
-        totalMarked: studentRecs.length,
+        totalMarked: markedCount,
         statusCategory,
         isFlagged: statusCategory === 'PARTIAL_DAY_ABSENCE'
       };
@@ -243,7 +279,7 @@ export const AttendanceProvider = ({ children }) => {
     };
   };
 
-  // Weekly/Monthly Leaderboard Ranking (Sorted by Partial Bunk Cases first)
+  // Weekly Leaderboard Ranking
   const getBunkLeaderboard = (classSection, daysBack = 30) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysBack);
@@ -253,23 +289,11 @@ export const AttendanceProvider = ({ children }) => {
       s => !classSection || s.class_section === classSection
     );
 
-    // Group records by student and date
-    const studentDayMap = {};
-
-    attendanceRecords.forEach(r => {
-      if (r.date >= cutoffStr) {
-        const key = `${r.student_id}_${r.date}`;
-        if (!studentDayMap[key]) {
-          studentDayMap[key] = { student_id: r.student_id, date: r.date, present: 0, absent: 0, total: 0 };
-        }
-        if (r.status === 'present') studentDayMap[key].present++;
-        if (r.status === 'absent') studentDayMap[key].absent++;
-        studentDayMap[key].total++;
-      }
-    });
+    const relevantSessions = lectureSessions.filter(
+      s => s.date >= cutoffStr && (!classSection || s.class_section === classSection)
+    );
 
     const studentStats = {};
-
     classStudents.forEach(st => {
       studentStats[st.id] = {
         student: st,
@@ -280,7 +304,32 @@ export const AttendanceProvider = ({ children }) => {
       };
     });
 
-    Object.values(studentDayMap).forEach(item => {
+    // Group sessions by date per student
+    const dayStudentMap = {};
+    relevantSessions.forEach(session => {
+      classStudents.forEach(st => {
+        const key = `${st.id}_${session.date}`;
+        if (!dayStudentMap[key]) {
+          dayStudentMap[key] = { student_id: st.id, date: session.date, present: 0, absent: 0, total: 0 };
+        }
+        const rec = attendanceRecords.find(
+          r => r.lecture_session_id === session.id && r.student_id === st.id
+        );
+        if (rec) {
+          dayStudentMap[key].total++;
+          if (rec.status === 'present') dayStudentMap[key].present++;
+          if (rec.status === 'absent') {
+            dayStudentMap[key].absent++;
+            const stat = studentStats[st.id];
+            if (stat) {
+              stat.periodAbsenceMap[session.period_id] = (stat.periodAbsenceMap[session.period_id] || 0) + 1;
+            }
+          }
+        }
+      });
+    });
+
+    Object.values(dayStudentMap).forEach(item => {
       const stat = studentStats[item.student_id];
       if (stat) {
         stat.totalAbsentLectures += item.absent;
@@ -291,23 +340,12 @@ export const AttendanceProvider = ({ children }) => {
       }
     });
 
-    // Populate period absence map for most common period skip
-    attendanceRecords.forEach(r => {
-      if (r.date >= cutoffStr && r.status === 'absent') {
-        const stat = studentStats[r.student_id];
-        if (stat) {
-          stat.periodAbsenceMap[r.period_id] = (stat.periodAbsenceMap[r.period_id] || 0) + 1;
-        }
-      }
-    });
-
     const leaderboard = Object.values(studentStats)
       .map(item => {
         const attendancePct = item.totalMarkedLectures > 0
           ? Math.round(((item.totalMarkedLectures - item.totalAbsentLectures) / item.totalMarkedLectures) * 100)
           : 100;
 
-        // Find most common absent period
         let topPeriodId = null;
         let maxSkips = 0;
         Object.entries(item.periodAbsenceMap).forEach(([pId, count]) => {
@@ -329,22 +367,24 @@ export const AttendanceProvider = ({ children }) => {
       })
       .sort((a, b) => {
         if (b.partialBunkCount !== a.partialBunkCount) {
-          return b.partialBunkCount - a.partialBunkCount; // Primary sort by partial bunk cases
+          return b.partialBunkCount - a.partialBunkCount;
         }
-        return b.totalAbsentLectures - a.totalAbsentLectures; // Secondary sort by total absences
+        return b.totalAbsentLectures - a.totalAbsentLectures;
       });
 
     return leaderboard;
   };
 
-  // Pattern Insights for a specific student
   const getStudentPatternInsights = (studentId) => {
-    const studentRecs = attendanceRecords.filter(r => r.student_id === studentId);
+    const studentRecords = attendanceRecords.filter(r => r.student_id === studentId);
     
     const dayGroups = {};
-    studentRecs.forEach(r => {
-      if (!dayGroups[r.date]) dayGroups[r.date] = [];
-      dayGroups[r.date].push(r);
+    studentRecords.forEach(r => {
+      const session = lectureSessions.find(s => s.id === r.lecture_session_id);
+      if (session) {
+        if (!dayGroups[session.date]) dayGroups[session.date] = [];
+        dayGroups[session.date].push({ rec: r, session });
+      }
     });
 
     const periodAbsentCounts = {};
@@ -352,16 +392,16 @@ export const AttendanceProvider = ({ children }) => {
     let totalBunkDays = 0;
     let totalFullAbsentDays = 0;
 
-    Object.entries(dayGroups).forEach(([date, recs]) => {
-      const hasPresent = recs.some(r => r.status === 'present');
-      const hasAbsent = recs.some(r => r.status === 'absent');
+    Object.entries(dayGroups).forEach(([date, items]) => {
+      const hasPresent = items.some(i => i.rec.status === 'present');
+      const hasAbsent = items.some(i => i.rec.status === 'absent');
 
       if (hasPresent && hasAbsent) {
         totalBunkDays++;
-        recs.forEach(r => {
-          if (r.status === 'absent') {
-            periodAbsentCounts[r.period_id] = (periodAbsentCounts[r.period_id] || 0) + 1;
-            subjectAbsentCounts[r.subject_id] = (subjectAbsentCounts[r.subject_id] || 0) + 1;
+        items.forEach(i => {
+          if (i.rec.status === 'absent') {
+            periodAbsentCounts[i.session.period_id] = (periodAbsentCounts[i.session.period_id] || 0) + 1;
+            subjectAbsentCounts[i.session.subject_id] = (subjectAbsentCounts[i.session.subject_id] || 0) + 1;
           }
         });
       } else if (!hasPresent && hasAbsent) {
@@ -377,7 +417,6 @@ export const AttendanceProvider = ({ children }) => {
 
     const topSkippedPeriod = [...periodBreakdown].sort((a, b) => b.absentOnBunkDays - a.absentOnBunkDays)[0];
 
-    // Subject breakdown
     let topSkippedSubject = null;
     let maxSubSkips = 0;
     Object.entries(subjectAbsentCounts).forEach(([sId, count]) => {
@@ -398,12 +437,13 @@ export const AttendanceProvider = ({ children }) => {
 
   const resetToSyntheticDefaults = () => {
     const initStudents = generateSyntheticStudents();
-    const initRecs = generateSyntheticAttendanceHistory(initStudents);
+    const { sessions, records } = generateSyntheticAttendanceHistory(initStudents);
     setStudents(initStudents);
     setSubjects(SYNTHETIC_SUBJECTS);
     setFacultySubjects(SYNTHETIC_FACULTY_SUBJECTS);
     setTimetable(SYNTHETIC_TIMETABLE);
-    setAttendanceRecords(initRecs);
+    setLectureSessions(sessions);
+    setAttendanceRecords(records);
     localStorage.clear();
   };
 
@@ -415,8 +455,10 @@ export const AttendanceProvider = ({ children }) => {
         periods,
         facultySubjects,
         timetable,
+        lectureSessions,
         attendanceRecords,
         isPeriodSubmitted,
+        getLectureSession,
         submitAttendance,
         unlockAndEditPeriod,
         getDailyMatrix,

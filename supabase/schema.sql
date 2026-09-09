@@ -1,9 +1,8 @@
 -- ========================================================
--- AttendX — Attendance & Bunk Detection Tool Schema DDL
--- Phase 2 — Timetable & Hardened Bunk Classification
+-- AttendX — Attendance Bunk Detection Tool Schema DDL
+-- Phase 2 Hardened — Lecture Sessions & Timetable Integrity
 -- ========================================================
 
--- Enable pgcrypto for UUID generation if needed
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. STUDENTS TABLE
@@ -17,9 +16,9 @@ CREATE TABLE IF NOT EXISTS students (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. FACULTY TABLE (Linked to Supabase auth.users)
+-- 2. FACULTY TABLE
 CREATE TABLE IF NOT EXISTS faculty (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- should match auth.users.id
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   faculty_id VARCHAR(50) NOT NULL UNIQUE,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
@@ -35,6 +34,7 @@ CREATE TABLE IF NOT EXISTS subjects (
   code VARCHAR(50) NOT NULL UNIQUE,
   class_section VARCHAR(50) NOT NULL,
   year INT NOT NULL DEFAULT 3,
+  is_lab BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS faculty_subjects (
 CREATE TABLE IF NOT EXISTS lecture_periods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   period_number INT NOT NULL UNIQUE,
-  label VARCHAR(50) NOT NULL, -- e.g. "Period 1"
+  label VARCHAR(50) NOT NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -65,18 +65,28 @@ CREATE TABLE IF NOT EXISTS timetable (
   subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
   faculty_id UUID NOT NULL REFERENCES faculty(id) ON DELETE CASCADE,
   class_section VARCHAR(50) NOT NULL,
+  room_no VARCHAR(50) DEFAULT 'Room 301',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT unique_schedule_slot UNIQUE (day_of_week, period_id, class_section)
 );
 
--- 7. ATTENDANCE RECORDS TABLE (CORE)
-CREATE TABLE IF NOT EXISTS attendance_records (
+-- 7. LECTURE SESSIONS TABLE (CORE SESSION ENTITY & DUPLICATE PROTECTION)
+CREATE TABLE IF NOT EXISTS lecture_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  class_section VARCHAR(50) NOT NULL,
+  period_id UUID NOT NULL REFERENCES lecture_periods(id) ON DELETE CASCADE,
   subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
   faculty_id UUID NOT NULL REFERENCES faculty(id) ON DELETE CASCADE,
-  period_id UUID NOT NULL REFERENCES lecture_periods(id) ON DELETE CASCADE,
-  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT unique_class_date_period UNIQUE (date, class_section, period_id)
+);
+
+-- 8. HARDENED ATTENDANCE RECORDS TABLE
+CREATE TABLE IF NOT EXISTS attendance_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lecture_session_id UUID NOT NULL REFERENCES lecture_sessions(id) ON DELETE CASCADE,
+  student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
   status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent')),
   is_locked BOOLEAN NOT NULL DEFAULT TRUE,
   
@@ -87,7 +97,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   original_status VARCHAR(10),
   
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT unique_student_lecture UNIQUE (student_id, subject_id, period_id, date)
+  CONSTRAINT unique_session_student UNIQUE (lecture_session_id, student_id)
 );
 
 -- ========================================================
@@ -121,6 +131,7 @@ ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE faculty_subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lecture_periods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE timetable ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lecture_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION is_admin() RETURNS BOOLEAN AS $$
@@ -139,6 +150,7 @@ CREATE POLICY public_read_subjects ON subjects FOR SELECT USING (auth.role() = '
 CREATE POLICY public_read_faculty ON faculty FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_faculty_subjects ON faculty_subjects FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_timetable ON timetable FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY public_read_sessions ON lecture_sessions FOR SELECT USING (auth.role() = 'authenticated');
 
 -- Admin Manage Policies
 CREATE POLICY admin_manage_students ON students FOR ALL USING (is_admin());
@@ -146,32 +158,49 @@ CREATE POLICY admin_manage_faculty ON faculty FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_subjects ON subjects FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_faculty_subjects ON faculty_subjects FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_timetable ON timetable FOR ALL USING (is_admin());
+CREATE POLICY admin_manage_sessions ON lecture_sessions FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_attendance ON attendance_records FOR ALL USING (is_admin());
 
--- Faculty Attendance Read
-CREATE POLICY faculty_select_attendance ON attendance_records
-  FOR SELECT USING (auth.uid() = faculty_id OR is_admin());
-
--- Faculty Attendance Insert (Validates faculty identity AND DB subject assignment)
-CREATE POLICY faculty_insert_attendance ON attendance_records
+-- Faculty Sessions Insert
+CREATE POLICY faculty_insert_sessions ON lecture_sessions
   FOR INSERT WITH CHECK (
     is_admin() OR (
       auth.uid() = faculty_id AND EXISTS (
         SELECT 1 FROM faculty_subjects fs
         WHERE fs.faculty_id = auth.uid() 
-        AND fs.subject_id = attendance_records.subject_id
+        AND fs.subject_id = lecture_sessions.subject_id
       )
     )
   );
 
--- Faculty Attendance Update (Requires period unlocked AND DB subject assignment)
+-- Faculty Attendance Read
+CREATE POLICY faculty_select_attendance ON attendance_records
+  FOR SELECT USING (
+    is_admin() OR EXISTS (
+      SELECT 1 FROM lecture_sessions ls
+      WHERE ls.id = attendance_records.lecture_session_id
+      AND ls.faculty_id = auth.uid()
+    )
+  );
+
+-- Faculty Attendance Insert
+CREATE POLICY faculty_insert_attendance ON attendance_records
+  FOR INSERT WITH CHECK (
+    is_admin() OR EXISTS (
+      SELECT 1 FROM lecture_sessions ls
+      WHERE ls.id = attendance_records.lecture_session_id
+      AND ls.faculty_id = auth.uid()
+    )
+  );
+
+-- Faculty Attendance Update (Requires period unlocked)
 CREATE POLICY faculty_update_attendance ON attendance_records
   FOR UPDATE USING (
     is_admin() OR (
-      auth.uid() = faculty_id AND is_locked = FALSE AND EXISTS (
-        SELECT 1 FROM faculty_subjects fs
-        WHERE fs.faculty_id = auth.uid() 
-        AND fs.subject_id = attendance_records.subject_id
+      is_locked = FALSE AND EXISTS (
+        SELECT 1 FROM lecture_sessions ls
+        WHERE ls.id = attendance_records.lecture_session_id
+        AND ls.faculty_id = auth.uid()
       )
     )
   );
@@ -182,7 +211,7 @@ CREATE POLICY faculty_update_attendance ON attendance_records
 CREATE OR REPLACE VIEW bunk_flags AS
 SELECT 
   ar.student_id,
-  ar.date,
+  ls.date,
   s.roll_number,
   s.enrollment_number,
   s.name AS student_name,
@@ -193,5 +222,6 @@ SELECT
   (COUNT(CASE WHEN ar.status = 'present' THEN 1 END) > 0 AND 
    COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) > 0) AS is_flagged
 FROM attendance_records ar
+JOIN lecture_sessions ls ON ls.id = ar.lecture_session_id
 JOIN students s ON s.id = ar.student_id
-GROUP BY ar.student_id, ar.date, s.roll_number, s.enrollment_number, s.name, s.class_section;
+GROUP BY ar.student_id, ls.date, s.roll_number, s.enrollment_number, s.name, s.class_section;
