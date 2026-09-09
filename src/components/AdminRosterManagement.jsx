@@ -1,23 +1,38 @@
 import React, { useState } from 'react';
 import { useAttendance } from '../context/AttendanceContext';
-import { Upload, Plus, FileText, UserPlus, CheckCircle, AlertCircle, Users, BookOpen } from 'lucide-react';
+import { Upload, Plus, FileText, UserPlus, CheckCircle, AlertCircle, Users, BookOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 
 export const AdminRosterManagement = () => {
-  const { students, subjects, facultySubjects, importStudentsFromCSV, addSingleStudent } = useAttendance();
+  const {
+    students,
+    subjects,
+    facultySubjects,
+    importStudentsFromCSV,
+    addSingleStudent,
+    addSubject,
+    clearAllRecordsForDemo,
+    restoreDefaultDemoData
+  } = useAttendance();
 
   const [activeSectionFilter, setActiveSectionFilter] = useState('CS-A');
   const [showCsvModal, setShowCsvModal] = useState(false);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
-  const [csvTextContent, setCsvTextContent] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [demoActionMsg, setDemoActionMsg] = useState('');
 
-  // Manual Add Form State
+  // Manual Student Form State
   const [newRoll, setNewRoll] = useState('');
   const [newName, setNewName] = useState('');
   const [newClass, setNewClass] = useState('CS-A');
   const [newYear, setNewYear] = useState(3);
   const [addSuccess, setAddSuccess] = useState(false);
+
+  // Custom Subject Form State
+  const [subName, setSubName] = useState('');
+  const [subCode, setSubCode] = useState('');
+  const [subSection, setSubSection] = useState('CS-A');
 
   const filteredStudents = students.filter(
     s => !activeSectionFilter || s.class_section === activeSectionFilter
@@ -74,29 +89,90 @@ export const AdminRosterManagement = () => {
     setTimeout(() => setAddSuccess(false), 3000);
   };
 
+  const handleAddSubject = (e) => {
+    e.preventDefault();
+    if (!subName || !subCode) return;
+    addSubject({
+      name: subName,
+      code: subCode,
+      class_section: subSection,
+      year: 3
+    });
+    setSubName('');
+    setSubCode('');
+    setShowSubjectModal(false);
+  };
+
+  const handleClearForLiveDemo = () => {
+    clearAllRecordsForDemo();
+    setDemoActionMsg('All attendance records cleared! Ready for 100% clean live marking in front of Sir.');
+    setTimeout(() => setDemoActionMsg(''), 4000);
+  };
+
+  const handleRestoreDemoData = () => {
+    restoreDefaultDemoData();
+    setDemoActionMsg('Default sample dataset restored.');
+    setTimeout(() => setDemoActionMsg(''), 4000);
+  };
+
   return (
     <div className="space-y-6">
       
-      {/* Top Banner & CSV Import Button */}
+      {/* Top Banner & Demo Control Buttons */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-extrabold text-slate-900 flex items-center space-x-2">
             <Users className="w-5 h-5 text-brand-500" />
-            <span>Roster & Data Management</span>
+            <span>Admin Roster & Live Demo Management</span>
           </h2>
           <p className="text-xs text-slate-500">
-            Bulk CSV import 50-100 students per section, manage roll numbers, and assign faculty subjects
+            Control live data, bulk import student rosters via CSV, and configure subjects
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCsvModal(true)}
-          className="flex items-center space-x-2 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow-md transition-all"
-        >
-          <Upload className="w-4 h-4" />
-          <span>Bulk CSV Roster Import</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleClearForLiveDemo}
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs rounded-xl shadow-2xs transition-all"
+            title="Clear all records so Sir can test from a clean slate"
+          >
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            <span>Start Fresh Live Demo (0 Records)</span>
+          </button>
+
+          <button
+            onClick={handleRestoreDemoData}
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-all"
+            title="Restore sample synthetic data"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
+            <span>Restore Sample Data</span>
+          </button>
+
+          <button
+            onClick={() => setShowSubjectModal(true)}
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-2xs transition-all"
+          >
+            <BookOpen className="w-4 h-4 text-brand-400" />
+            <span>+ Add Subject</span>
+          </button>
+
+          <button
+            onClick={() => setShowCsvModal(true)}
+            className="flex items-center space-x-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Bulk CSV Import</span>
+          </button>
+        </div>
       </div>
+
+      {demoActionMsg && (
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3.5 rounded-2xl text-xs font-bold flex items-center space-x-2">
+          <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <span>{demoActionMsg}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -311,6 +387,81 @@ export const AdminRosterManagement = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Custom Subject Modal */}
+      {showSubjectModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <BookOpen className="w-5 h-5 text-brand-500" />
+                <span>Add Custom Subject</span>
+              </h3>
+              <button
+                onClick={() => setShowSubjectModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddSubject} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Subject Name</label>
+                <input
+                  type="text"
+                  required
+                  value={subName}
+                  onChange={(e) => setSubName(e.target.value)}
+                  placeholder="Compiler Design"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Subject Code</label>
+                <input
+                  type="text"
+                  required
+                  value={subCode}
+                  onChange={(e) => setSubCode(e.target.value)}
+                  placeholder="CS307"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Class Section</label>
+                <select
+                  value={subSection}
+                  onChange={(e) => setSubSection(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none"
+                >
+                  <option value="CS-A">CS-A</option>
+                  <option value="CS-B">CS-B</option>
+                  <option value="EC-A">EC-A</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowSubjectModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold text-white bg-brand-500 hover:bg-brand-600 rounded-xl shadow-xs"
+                >
+                  Save Subject
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

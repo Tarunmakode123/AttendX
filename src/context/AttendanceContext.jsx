@@ -13,7 +13,7 @@ export const DEFAULT_PERIODS = [
   { id: 'p5', period_number: 5, label: 'Period 5 (02:15 - 03:15)', start_time: '14:15', end_time: '15:15' },
 ];
 
-// Pre-defined Subjects
+// Default Initial Subjects
 export const DEFAULT_SUBJECTS = [
   { id: 'sub-101', name: 'Data Structures & Algorithms', code: 'CS301', class_section: 'CS-A', year: 3 },
   { id: 'sub-102', name: 'Web Technology', code: 'CS302', class_section: 'CS-A', year: 3 },
@@ -23,13 +23,13 @@ export const DEFAULT_SUBJECTS = [
   { id: 'sub-202', name: 'Software Engineering', code: 'CS306', class_section: 'CS-B', year: 3 },
 ];
 
-// Faculty-Subject Mappings (DB Constraint Table Mock)
+// Faculty-Subject Mappings
 export const DEFAULT_FACULTY_SUBJECTS = [
   { faculty_id: 'fac-001', subject_id: 'sub-101' }, // Prof. Alan -> DSA
   { faculty_id: 'fac-001', subject_id: 'sub-103' }, // Prof. Alan -> DBMS
   { faculty_id: 'fac-002', subject_id: 'sub-102' }, // Prof. Priya -> Web Tech
   { faculty_id: 'fac-002', subject_id: 'sub-104' }, // Prof. Priya -> OS
-  { faculty_id: 'admin-001', subject_id: 'sub-101' }, // Admin full
+  { faculty_id: 'admin-001', subject_id: 'sub-101' },
   { faculty_id: 'admin-001', subject_id: 'sub-102' },
   { faculty_id: 'admin-001', subject_id: 'sub-103' },
   { faculty_id: 'admin-001', subject_id: 'sub-104' },
@@ -61,52 +61,58 @@ export const AttendanceProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
   });
 
-  const [subjects, setSubjects] = useState(DEFAULT_SUBJECTS);
-  const [periods] = useState(DEFAULT_PERIODS);
-  const [facultySubjects, setFacultySubjects] = useState(DEFAULT_FACULTY_SUBJECTS);
+  const [subjects, setSubjects] = useState(() => {
+    const saved = localStorage.getItem('attendx_subjects');
+    return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
+  });
 
-  // Helper date formatted YYYY-MM-DD
+  const [periods] = useState(DEFAULT_PERIODS);
+
+  const [facultySubjects, setFacultySubjects] = useState(() => {
+    const saved = localStorage.getItem('attendx_faculty_subjects');
+    return saved ? JSON.parse(saved) : DEFAULT_FACULTY_SUBJECTS;
+  });
+
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Attendance Records State
+  const getInitialRecords = () => [
+    { id: 'rec-01', student_id: 'st-01', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-02', student_id: 'st-02', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-03', student_id: 'st-03', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-04', student_id: 'st-04', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'absent', is_locked: true },
+    { id: 'rec-05', student_id: 'st-05', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-06', student_id: 'st-06', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-07', student_id: 'st-07', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'absent', is_locked: true },
+    { id: 'rec-08', student_id: 'st-08', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
+
+    { id: 'rec-11', student_id: 'st-01', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-12', student_id: 'st-02', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-13', student_id: 'st-03', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-14', student_id: 'st-04', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-15', student_id: 'st-05', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'absent', is_locked: true },
+    { id: 'rec-16', student_id: 'st-06', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
+    { id: 'rec-17', student_id: 'st-07', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'absent', is_locked: true },
+    { id: 'rec-18', student_id: 'st-08', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
+  ];
+
   const [attendanceRecords, setAttendanceRecords] = useState(() => {
     const saved = localStorage.getItem('attendx_records');
     if (saved) return JSON.parse(saved);
-
-    // Default Seed Attendance showing realistic bunk patterns for demo testing
-    return [
-      // Period 1 Today CS-A (Prof. Alan - DSA)
-      { id: 'rec-01', student_id: 'st-01', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-02', student_id: 'st-02', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-03', student_id: 'st-03', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-04', student_id: 'st-04', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'absent', is_locked: true }, // Devansh absent P1
-      { id: 'rec-05', student_id: 'st-05', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true }, // Ishan present P1
-      { id: 'rec-06', student_id: 'st-06', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-07', student_id: 'st-07', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'absent', is_locked: true }, // Manish absent P1
-      { id: 'rec-08', student_id: 'st-08', subject_id: 'sub-101', faculty_id: 'fac-001', period_id: 'p1', date: todayStr, status: 'present', is_locked: true },
-
-      // Period 2 Today CS-A (Prof. Priya - Web Tech)
-      { id: 'rec-11', student_id: 'st-01', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-12', student_id: 'st-02', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-13', student_id: 'st-03', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-14', student_id: 'st-04', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true }, // Devansh present P2 -> Bunk Flag!
-      { id: 'rec-15', student_id: 'st-05', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'absent', is_locked: true },  // Ishan absent P2 -> Bunk Flag!
-      { id: 'rec-16', student_id: 'st-06', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-17', student_id: 'st-07', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'absent', is_locked: true },  // Manish absent P1 & P2 -> Full absent, NOT bunk
-      { id: 'rec-18', student_id: 'st-08', subject_id: 'sub-102', faculty_id: 'fac-002', period_id: 'p2', date: todayStr, status: 'present', is_locked: true },
-
-      // Period 3 Today CS-A (Prof. Alan - DBMS)
-      { id: 'rec-21', student_id: 'st-01', subject_id: 'sub-103', faculty_id: 'fac-001', period_id: 'p3', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-24', student_id: 'st-04', subject_id: 'sub-103', faculty_id: 'fac-001', period_id: 'p3', date: todayStr, status: 'present', is_locked: true },
-      { id: 'rec-25', student_id: 'st-05', subject_id: 'sub-103', faculty_id: 'fac-001', period_id: 'p3', date: todayStr, status: 'absent', is_locked: true },  // Ishan absent P3
-      { id: 'rec-29', student_id: 'st-09', subject_id: 'sub-103', faculty_id: 'fac-001', period_id: 'p3', date: todayStr, status: 'present', is_locked: true },
-    ];
+    return getInitialRecords();
   });
 
   // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('attendx_students', JSON.stringify(students));
   }, [students]);
+
+  useEffect(() => {
+    localStorage.setItem('attendx_subjects', JSON.stringify(subjects));
+  }, [subjects]);
+
+  useEffect(() => {
+    localStorage.setItem('attendx_faculty_subjects', JSON.stringify(facultySubjects));
+  }, [facultySubjects]);
 
   useEffect(() => {
     localStorage.setItem('attendx_records', JSON.stringify(attendanceRecords));
@@ -121,7 +127,6 @@ export const AttendanceProvider = ({ children }) => {
 
   // Submit New Attendance Batch
   const submitAttendance = async ({ classSection, subjectId, facultyId, periodId, date, markMap }) => {
-    // Check faculty-subject authorization (DB logic check)
     const isAssigned = facultySubjects.some(
       fs => fs.faculty_id === facultyId && fs.subject_id === subjectId
     );
@@ -143,7 +148,6 @@ export const AttendanceProvider = ({ children }) => {
       created_at: new Date().toISOString()
     }));
 
-    // Filter out existing records for this combo to prevent duplicates
     const updated = attendanceRecords.filter(
       r => !(r.subject_id === subjectId && r.period_id === periodId && r.date === date)
     ).concat(newRecords);
@@ -160,7 +164,6 @@ export const AttendanceProvider = ({ children }) => {
       if (r.subject_id === subjectId && r.period_id === periodId && r.date === date) {
         const newStatus = updatedMarks[r.student_id];
         if (newStatus && newStatus !== r.status) {
-          // Trigger audit logging (imitates Postgres BEFORE UPDATE trigger)
           return {
             ...r,
             original_status: r.original_status || r.status,
@@ -184,7 +187,6 @@ export const AttendanceProvider = ({ children }) => {
     const classStudents = students.filter(s => s.class_section === classSection);
     const dateRecords = attendanceRecords.filter(r => r.date === date);
 
-    // Active periods that have records on this date for this class
     const activePeriodIds = Array.from(
       new Set(
         dateRecords
@@ -215,8 +217,6 @@ export const AttendanceProvider = ({ children }) => {
         if (r.status === 'absent') absentCount++;
       });
 
-      // CORE BUNK DETECTION LOGIC:
-      // Flagged if student has AT LEAST 1 Present AND AT LEAST 1 Absent on the same date!
       const isFlagged = presentCount > 0 && absentCount > 0;
 
       return {
@@ -247,7 +247,6 @@ export const AttendanceProvider = ({ children }) => {
       s => !classSection || s.class_section === classSection
     );
 
-    // Group records by student and date
     const studentDayMap = {};
 
     attendanceRecords.forEach(r => {
@@ -261,7 +260,6 @@ export const AttendanceProvider = ({ children }) => {
       }
     });
 
-    // Count bunk instances per student
     const studentBunkCounts = {};
     Object.values(studentDayMap).forEach(item => {
       if (item.present > 0 && item.absent > 0) {
@@ -279,11 +277,10 @@ export const AttendanceProvider = ({ children }) => {
     return leaderboard;
   };
 
-  // Pattern Insights for a specific student (Stretch Goal)
+  // Pattern Insights for a specific student
   const getStudentPatternInsights = (studentId) => {
     const studentRecs = attendanceRecords.filter(r => r.student_id === studentId);
     
-    // Group by date
     const dayGroups = {};
     studentRecs.forEach(r => {
       if (!dayGroups[r.date]) dayGroups[r.date] = [];
@@ -313,7 +310,6 @@ export const AttendanceProvider = ({ children }) => {
       percentage: totalBunkDays > 0 ? Math.round(((periodAbsentCounts[p.id] || 0) / totalBunkDays) * 100) : 0
     }));
 
-    // Find worst period
     const topSkipped = [...periodBreakdown].sort((a, b) => b.absentOnBunkDays - a.absentOnBunkDays)[0];
 
     return {
@@ -346,7 +342,6 @@ export const AttendanceProvider = ({ children }) => {
               };
             });
 
-            // Merge with existing students, replacing duplicates by roll number
             setStudents(prev => {
               const filtered = prev.filter(s => !newStudents.some(ns => ns.roll_number === s.roll_number));
               return [...filtered, ...newStudents];
@@ -371,6 +366,38 @@ export const AttendanceProvider = ({ children }) => {
     return newSt;
   };
 
+  const addSubject = (subjectData) => {
+    const newSub = {
+      id: 'sub-' + Date.now(),
+      ...subjectData
+    };
+    setSubjects(prev => [...prev, newSub]);
+    // Assign to admin and current demo faculty
+    setFacultySubjects(prev => [
+      ...prev,
+      { faculty_id: 'fac-001', subject_id: newSub.id },
+      { faculty_id: 'admin-001', subject_id: newSub.id }
+    ]);
+    return newSub;
+  };
+
+  const clearAllRecordsForDemo = () => {
+    setAttendanceRecords([]);
+    localStorage.setItem('attendx_records', JSON.stringify([]));
+  };
+
+  const restoreDefaultDemoData = () => {
+    setStudents(INITIAL_STUDENTS);
+    setSubjects(DEFAULT_SUBJECTS);
+    setFacultySubjects(DEFAULT_FACULTY_SUBJECTS);
+    const recs = getInitialRecords();
+    setAttendanceRecords(recs);
+    localStorage.setItem('attendx_students', JSON.stringify(INITIAL_STUDENTS));
+    localStorage.setItem('attendx_subjects', JSON.stringify(DEFAULT_SUBJECTS));
+    localStorage.setItem('attendx_faculty_subjects', JSON.stringify(DEFAULT_FACULTY_SUBJECTS));
+    localStorage.setItem('attendx_records', JSON.stringify(recs));
+  };
+
   return (
     <AttendanceContext.Provider
       value={{
@@ -386,7 +413,10 @@ export const AttendanceProvider = ({ children }) => {
         getBunkLeaderboard,
         getStudentPatternInsights,
         importStudentsFromCSV,
-        addSingleStudent
+        addSingleStudent,
+        addSubject,
+        clearAllRecordsForDemo,
+        restoreDefaultDemoData
       }}
     >
       {children}
