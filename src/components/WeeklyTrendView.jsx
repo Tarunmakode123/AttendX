@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
 import { useAttendance } from '../context/AttendanceContext';
+import { useAuth, DEMO_USERS } from '../context/AuthContext';
 import { PatternInsights } from './PatternInsights';
-import { TrendingUp, AlertTriangle, ChevronRight, User, Calendar, Award, Clock } from 'lucide-react';
+import { TrendingUp, AlertTriangle, ChevronRight, User, Calendar, Award, Clock, Filter } from 'lucide-react';
 
 export const WeeklyTrendView = ({ selectedClass, setSelectedClass }) => {
   const { getBunkLeaderboard } = useAttendance();
+  const { currentUser, isAdmin } = useAuth();
   const [timeframeDays, setTimeframeDays] = useState(30);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedFacultyFilter, setSelectedFacultyFilter] = useState('');
 
-  const leaderboard = getBunkLeaderboard(selectedClass, timeframeDays);
+  const effectiveFacultyScope = isAdmin ? (selectedFacultyFilter || null) : (currentUser?.id || null);
+  const leaderboard = getBunkLeaderboard(selectedClass, timeframeDays, effectiveFacultyScope);
 
   return (
     <div className="space-y-6">
@@ -25,7 +29,26 @@ export const WeeklyTrendView = ({ selectedClass, setSelectedClass }) => {
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isAdmin && (
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-amber-700 mb-0.5 flex items-center space-x-1">
+                <Filter className="w-3 h-3 text-amber-600 inline" />
+                <span>HOD Faculty Filter</span>
+              </label>
+              <select
+                value={selectedFacultyFilter}
+                onChange={(e) => setSelectedFacultyFilter(e.target.value)}
+                className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-1.5 text-xs font-extrabold text-amber-950 focus:outline-none"
+              >
+                <option value="">All CSE Faculty (Dept-Wide)</option>
+                {DEMO_USERS.filter(u => u.role === 'faculty').map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Section</label>
             <select
@@ -197,7 +220,7 @@ export const WeeklyTrendView = ({ selectedClass, setSelectedClass }) => {
               </button>
             </div>
 
-            <PatternInsights studentId={selectedStudent.id} />
+            <PatternInsights studentId={selectedStudent.id} scopedFacultyId={effectiveFacultyScope} />
 
             <div className="flex items-center justify-end pt-2 border-t border-slate-100">
               <button

@@ -1,6 +1,6 @@
 -- ========================================================
 -- AttendX — Attendance Bunk Detection Tool Schema DDL
--- Phase 2 Hardened — Lecture Sessions & Timetable Integrity
+-- Phase 3 — Timetable-Driven RLS & Role-Scoped Access
 -- ========================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS timetable (
   CONSTRAINT unique_schedule_slot UNIQUE (day_of_week, period_id, class_section)
 );
 
--- 7. LECTURE SESSIONS TABLE (CORE SESSION ENTITY & DUPLICATE PROTECTION)
+-- 7. LECTURE SESSIONS TABLE (CORE SESSION ENTITY)
 CREATE TABLE IF NOT EXISTS lecture_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent')),
   is_locked BOOLEAN NOT NULL DEFAULT TRUE,
   
-  -- Audit Trail Columns (Managed automatically via Postgres Trigger)
+  -- Audit Trail Columns (Managed via Postgres Trigger)
   is_edited BOOLEAN NOT NULL DEFAULT FALSE,
   edited_by UUID REFERENCES faculty(id),
   edited_at TIMESTAMPTZ,
@@ -150,9 +150,8 @@ CREATE POLICY public_read_subjects ON subjects FOR SELECT USING (auth.role() = '
 CREATE POLICY public_read_faculty ON faculty FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_faculty_subjects ON faculty_subjects FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY public_read_timetable ON timetable FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY public_read_sessions ON lecture_sessions FOR SELECT USING (auth.role() = 'authenticated');
 
--- Admin Manage Policies
+-- Admin Full Access Policies
 CREATE POLICY admin_manage_students ON students FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_faculty ON faculty FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_subjects ON subjects FOR ALL USING (is_admin());
@@ -161,19 +160,21 @@ CREATE POLICY admin_manage_timetable ON timetable FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_sessions ON lecture_sessions FOR ALL USING (is_admin());
 CREATE POLICY admin_manage_attendance ON attendance_records FOR ALL USING (is_admin());
 
--- Faculty Sessions Insert
+-- TIMETABLE-ENFORCED FACULTY SESSIONS INSERT POLICY (PHASE 3 HARDENING)
 CREATE POLICY faculty_insert_sessions ON lecture_sessions
   FOR INSERT WITH CHECK (
     is_admin() OR (
       auth.uid() = faculty_id AND EXISTS (
-        SELECT 1 FROM faculty_subjects fs
-        WHERE fs.faculty_id = auth.uid() 
-        AND fs.subject_id = lecture_sessions.subject_id
+        SELECT 1 FROM timetable tt
+        WHERE tt.faculty_id = auth.uid()
+        AND tt.class_section = lecture_sessions.class_section
+        AND tt.period_id = lecture_sessions.period_id
+        AND tt.subject_id = lecture_sessions.subject_id
       )
     )
   );
 
--- Faculty Attendance Read
+-- FACULTY ATTENDANCE READ POLICY (SCOPED TO FACULTY'S OWN LECTURES)
 CREATE POLICY faculty_select_attendance ON attendance_records
   FOR SELECT USING (
     is_admin() OR EXISTS (
@@ -183,7 +184,7 @@ CREATE POLICY faculty_select_attendance ON attendance_records
     )
   );
 
--- Faculty Attendance Insert
+-- FACULTY ATTENDANCE INSERT POLICY
 CREATE POLICY faculty_insert_attendance ON attendance_records
   FOR INSERT WITH CHECK (
     is_admin() OR EXISTS (
@@ -193,7 +194,7 @@ CREATE POLICY faculty_insert_attendance ON attendance_records
     )
   );
 
--- Faculty Attendance Update (Requires period unlocked)
+-- FACULTY ATTENDANCE UPDATE POLICY (Requires period unlocked)
 CREATE POLICY faculty_update_attendance ON attendance_records
   FOR UPDATE USING (
     is_admin() OR (

@@ -13,6 +13,8 @@ export const AttendanceMarker = ({
     students,
     subjects,
     periods,
+    timetable,
+    facultySubjects,
     attendanceRecords,
     getLectureSession,
     submitAttendance
@@ -32,6 +34,21 @@ export const AttendanceMarker = ({
   // Check if session already exists for DATE + CLASS_SECTION + PERIOD_ID (Part 7 & 8)
   const existingSession = getLectureSession(selectedDate, selectedClass, selectedPeriodId);
   const isLocked = Boolean(existingSession);
+
+  // Check timetable slot assignment
+  const dateObj = new Date(selectedDate);
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayName = dayNames[dateObj.getDay()];
+
+  const matchingSlot = timetable.find(
+    tt => tt.day_of_week === dayName &&
+          tt.class_section === selectedClass &&
+          tt.period_id === selectedPeriodId &&
+          tt.subject_id === selectedSubjectId
+  );
+
+  const assignedFacultyObj = matchingSlot ? DEMO_USERS?.find(u => u.id === matchingSlot.faculty_id) : null;
+  const isAssignedToCurrentFaculty = isAdmin || (matchingSlot ? matchingSlot.faculty_id === currentUser?.id : facultySubjects.some(fs => fs.faculty_id === currentUser?.id && fs.subject_id === selectedSubjectId));
 
   // Get session submitter name
   const submitterObj = existingSession ? DEMO_USERS?.find(u => u.id === existingSession.faculty_id) : null;
@@ -58,7 +75,7 @@ export const AttendanceMarker = ({
   }, [selectedClass, selectedSubjectId, selectedPeriodId, selectedDate, attendanceRecords]);
 
   const toggleStatus = (studentId) => {
-    if (isLocked && !isAdmin) return;
+    if ((isLocked || !isAssignedToCurrentFaculty) && !isAdmin) return;
     setMarkMap(prev => ({
       ...prev,
       [studentId]: prev[studentId] === 'absent' ? 'present' : 'absent'
@@ -66,14 +83,14 @@ export const AttendanceMarker = ({
   };
 
   const markAllPresent = () => {
-    if (isLocked && !isAdmin) return;
+    if ((isLocked || !isAssignedToCurrentFaculty) && !isAdmin) return;
     const updated = {};
     classStudents.forEach(s => { updated[s.id] = 'present'; });
     setMarkMap(updated);
   };
 
   const invertAll = () => {
-    if (isLocked && !isAdmin) return;
+    if ((isLocked || !isAssignedToCurrentFaculty) && !isAdmin) return;
     const updated = {};
     classStudents.forEach(s => {
       updated[s.id] = markMap[s.id] === 'absent' ? 'present' : 'absent';
@@ -93,6 +110,10 @@ export const AttendanceMarker = ({
   const handleSubmit = async () => {
     if (!selectedSubjectId) {
       setErrorMessage('Please select a valid subject.');
+      return;
+    }
+    if (!isAssignedToCurrentFaculty) {
+      setErrorMessage('You are not assigned to this lecture according to the timetable.');
       return;
     }
     setSubmitting(true);
@@ -144,6 +165,21 @@ export const AttendanceMarker = ({
           <span>Instructor: <strong className="text-slate-800">{currentUser?.name}</strong></span>
         </div>
       </div>
+
+      {/* Cross-Faculty Timetable Assignment Restriction Warning */}
+      {!isAssignedToCurrentFaculty && !isLocked && (
+        <div className="bg-red-50 border border-red-300 p-5 rounded-2xl flex items-start space-x-3 text-red-950">
+          <ShieldAlert className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="font-extrabold text-sm text-red-900">
+              Timetable Assignment Block (DB RLS Enforced)
+            </h4>
+            <p className="text-xs text-red-800 mt-0.5">
+              According to the college master timetable, this lecture is assigned to <strong>{assignedFacultyObj?.name || 'another faculty member'}</strong>. Dr. {currentUser?.name} is not authorized to submit attendance for this slot.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Part 7 & 8: Duplicate Session Block Card if already submitted */}
       {isLocked && (
@@ -312,12 +348,18 @@ export const AttendanceMarker = ({
         <div className="pt-2 sticky bottom-4">
           <button
             onClick={handleSubmit}
-            disabled={submitting || filteredStudents.length === 0}
-            className="w-full py-4 px-6 bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-black text-base rounded-2xl shadow-xl shadow-brand-500/30 flex items-center justify-center space-x-2 transition-all focus:ring-4 focus:ring-brand-300 focus:outline-none disabled:opacity-50"
+            disabled={submitting || filteredStudents.length === 0 || !isAssignedToCurrentFaculty}
+            className={`w-full py-4 px-6 font-black text-base rounded-2xl shadow-xl flex items-center justify-center space-x-2 transition-all focus:ring-4 focus:outline-none ${
+              !isAssignedToCurrentFaculty
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                : 'bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white shadow-brand-500/30 focus:ring-brand-300'
+            }`}
           >
             <Send className="w-5 h-5" />
             <span>
-              {submitting
+              {!isAssignedToCurrentFaculty
+                ? 'Submission Blocked — Not Assigned in Timetable'
+                : submitting
                 ? 'Submitting Session...'
                 : `Submit Attendance (${presentCount} Present / ${absentCount} Absent)`}
             </span>

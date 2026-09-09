@@ -2,10 +2,10 @@ import React from 'react';
 import { useAttendance } from '../context/AttendanceContext';
 import { AlertCircle, TrendingDown, Clock, Lightbulb, BookOpen, AlertTriangle } from 'lucide-react';
 
-export const PatternInsights = ({ studentId }) => {
+export const PatternInsights = ({ studentId, scopedFacultyId = null }) => {
   const { getStudentPatternInsights } = useAttendance();
 
-  const insights = getStudentPatternInsights(studentId);
+  const insights = getStudentPatternInsights(studentId, scopedFacultyId);
 
   if (!insights || (insights.totalBunkDays === 0 && insights.totalFullAbsentDays === 0)) {
     return (

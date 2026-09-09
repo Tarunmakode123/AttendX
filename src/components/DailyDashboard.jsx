@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAttendance } from '../context/AttendanceContext';
-import { useAuth } from '../context/AuthContext';
-import { AlertTriangle, Shield, Check, X, Lock, Unlock, Edit3, Calendar, Info, FileSpreadsheet, CheckCircle2, UserX } from 'lucide-react';
+import { useAuth, DEMO_USERS } from '../context/AuthContext';
+import { AlertTriangle, Shield, Check, X, Lock, Unlock, Edit3, Calendar, Info, FileSpreadsheet, CheckCircle2, UserX, Upload, Filter } from 'lucide-react';
 
 export const DailyDashboard = ({ selectedClass, setSelectedClass, selectedDate, setSelectedDate }) => {
   const { getDailyMatrix, periods, subjects, unlockAndEditPeriod, importDailyMasterSheetCSV } = useAttendance();
@@ -16,7 +16,11 @@ export const DailyDashboard = ({ selectedClass, setSelectedClass, selectedDate, 
   const [importingMaster, setImportingMaster] = useState(false);
   const [masterMsg, setMasterMsg] = useState(null);
 
-  const matrixData = getDailyMatrix(selectedClass, selectedDate);
+  // HOD Faculty Scope Filter
+  const [selectedFacultyFilter, setSelectedFacultyFilter] = useState('');
+
+  const effectiveFacultyScope = isAdmin ? (selectedFacultyFilter || null) : (currentUser?.id || null);
+  const matrixData = getDailyMatrix(selectedClass, selectedDate, effectiveFacultyScope);
 
   const handleOpenEditModal = (periodId) => {
     if (!isAdmin) return;
@@ -86,6 +90,25 @@ export const DailyDashboard = ({ selectedClass, setSelectedClass, selectedDate, 
             <FileSpreadsheet className="w-4 h-4 text-brand-500" />
             <span>Upload Daily Master Sheet</span>
           </button>
+
+          {isAdmin && (
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-amber-700 mb-0.5 flex items-center space-x-1">
+                <Filter className="w-3 h-3 text-amber-600 inline" />
+                <span>HOD Faculty Filter</span>
+              </label>
+              <select
+                value={selectedFacultyFilter}
+                onChange={(e) => setSelectedFacultyFilter(e.target.value)}
+                className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-1.5 text-xs font-extrabold text-amber-950 focus:outline-none"
+              >
+                <option value="">All CSE Faculty (Dept-Wide)</option>
+                {DEMO_USERS.filter(u => u.role === 'faculty').map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex items-center space-x-2">
             <div>

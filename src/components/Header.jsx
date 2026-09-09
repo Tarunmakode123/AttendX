@@ -46,7 +46,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
               }`}
             >
               <Calendar className="w-4 h-4" />
-              <span>Today's Schedule</span>
+              <span>{isAdmin ? "Department Schedule" : "Today's Schedule"}</span>
             </button>
 
             <button
@@ -61,7 +61,6 @@ export const Header = ({ activeTab, setActiveTab }) => {
               <span>Take Attendance</span>
             </button>
 
-            {/* TIMETABLE TAB FOR ALL USERS */}
             <button
               onClick={() => setActiveTab('timetable')}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -70,7 +69,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <Calendar className="w-4 h-4" />
+              <Calendar className="w-4 h-4 text-brand-500" />
               <span>Timetable</span>
             </button>
 
@@ -83,7 +82,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
               }`}
             >
               <Grid className="w-4 h-4" />
-              <span>Bunk Analysis</span>
+              <span>{isAdmin ? "Department Matrix" : "My Bunk Analysis"}</span>
             </button>
 
             <button
@@ -95,7 +94,7 @@ export const Header = ({ activeTab, setActiveTab }) => {
               }`}
             >
               <TrendingUp className="w-4 h-4" />
-              <span>Leaderboard</span>
+              <span>{isAdmin ? "Dept Leaderboard" : "Leaderboard"}</span>
             </button>
 
             {isAdmin && (

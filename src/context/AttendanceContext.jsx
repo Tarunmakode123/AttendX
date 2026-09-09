@@ -67,13 +67,15 @@ export const AttendanceProvider = ({ children }) => {
     return lectureSessions.some(s => s.period_id === periodId && s.date === date && s.subject_id === subjectId);
   };
 
-  const getExpectedPeriods = (classSection, dateStr) => {
+  const getExpectedPeriods = (classSection, dateStr, scopedFacultyId = null) => {
     const dateObj = new Date(dateStr);
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayName = dayNames[dateObj.getDay()];
 
     const scheduled = timetable.filter(
-      tt => tt.day_of_week === dayName && tt.class_section === classSection
+      tt => tt.day_of_week === dayName &&
+            tt.class_section === classSection &&
+            (!scopedFacultyId || scopedFacultyId === 'admin-001' || tt.faculty_id === scopedFacultyId)
     );
 
     return scheduled.map(slot => {
@@ -119,7 +121,7 @@ export const AttendanceProvider = ({ children }) => {
     }).sort((a, b) => (a.period?.period_number || 0) - (b.period?.period_number || 0));
   };
 
-  // Submit New Attendance Session (Enforces UNIQUE(date, class_section, period_id))
+  // Submit New Attendance Session (Enforces UNIQUE(date, class_section, period_id) + Timetable Assignment)
   const submitAttendance = async ({ classSection, subjectId, facultyId, periodId, date, markMap }) => {
     // 1. Check if session already exists for this DATE + CLASS_SECTION + PERIOD_ID
     const existingSession = getLectureSession(date, classSection, periodId);
@@ -127,12 +129,28 @@ export const AttendanceProvider = ({ children }) => {
       throw new Error(`Attendance for ${classSection} on ${date} (Period ${periodId}) has ALREADY been submitted! Duplicate submission blocked.`);
     }
 
-    // 2. Validate faculty assignment / timetable slot
-    const isAssigned = facultySubjects.some(
-      fs => fs.faculty_id === facultyId && fs.subject_id === subjectId
+    // 2. Validate timetable slot assignment & faculty assignment
+    const dateObj = new Date(date);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[dateObj.getDay()];
+
+    const matchingSlot = timetable.find(
+      tt => tt.day_of_week === dayName &&
+            tt.class_section === classSection &&
+            tt.period_id === periodId &&
+            tt.subject_id === subjectId
     );
-    if (!isAssigned && facultyId !== 'admin-001') {
-      throw new Error('Faculty is not authorized to submit attendance for this subject (DB RLS Policy)');
+
+    if (facultyId !== 'admin-001') {
+      if (matchingSlot && matchingSlot.faculty_id !== facultyId) {
+        throw new Error('You are not assigned to this lecture according to the timetable.');
+      }
+      const isAssigned = facultySubjects.some(
+        fs => fs.faculty_id === facultyId && fs.subject_id === subjectId
+      );
+      if (!isAssigned) {
+        throw new Error('Faculty is not authorized to submit attendance for this subject (DB RLS Policy)');
+      }
     }
 
     // 3. Create Lecture Session Entity
@@ -196,14 +214,16 @@ export const AttendanceProvider = ({ children }) => {
     return { success: true };
   };
 
-  // Compute Daily Attendance Matrix & Bunk Classification Rules
-  const getDailyMatrix = (classSection, dateStr) => {
+  // Compute Daily Attendance Matrix & Bunk Classification Rules (Supports Scoped Faculty ID)
+  const getDailyMatrix = (classSection, dateStr, scopedFacultyId = null) => {
     const classStudents = students.filter(s => s.class_section === classSection);
-    const expectedSlots = getExpectedPeriods(classSection, dateStr);
+    const expectedSlots = getExpectedPeriods(classSection, dateStr, scopedFacultyId);
 
     // Get all completed sessions for this class and date
     const daySessions = lectureSessions.filter(
-      s => s.date === dateStr && s.class_section === classSection
+      s => s.date === dateStr &&
+           s.class_section === classSection &&
+           (!scopedFacultyId || scopedFacultyId === 'admin-001' || s.faculty_id === scopedFacultyId)
     );
 
     const activePeriodIds = daySessions.map(s => s.period_id);
@@ -279,8 +299,8 @@ export const AttendanceProvider = ({ children }) => {
     };
   };
 
-  // Weekly Leaderboard Ranking
-  const getBunkLeaderboard = (classSection, daysBack = 30) => {
+  // Weekly Leaderboard Ranking (Supports Scoped Faculty ID)
+  const getBunkLeaderboard = (classSection, daysBack = 30, scopedFacultyId = null) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysBack);
     const cutoffStr = cutoffDate.toISOString().split('T')[0];
@@ -290,7 +310,9 @@ export const AttendanceProvider = ({ children }) => {
     );
 
     const relevantSessions = lectureSessions.filter(
-      s => s.date >= cutoffStr && (!classSection || s.class_section === classSection)
+      s => s.date >= cutoffStr &&
+           (!classSection || s.class_section === classSection) &&
+           (!scopedFacultyId || scopedFacultyId === 'admin-001' || s.faculty_id === scopedFacultyId)
     );
 
     const studentStats = {};
@@ -375,8 +397,16 @@ export const AttendanceProvider = ({ children }) => {
     return leaderboard;
   };
 
-  const getStudentPatternInsights = (studentId) => {
-    const studentRecords = attendanceRecords.filter(r => r.student_id === studentId);
+  const getStudentPatternInsights = (studentId, scopedFacultyId = null) => {
+    const relevantSessionIds = new Set(
+      lectureSessions
+        .filter(s => !scopedFacultyId || scopedFacultyId === 'admin-001' || s.faculty_id === scopedFacultyId)
+        .map(s => s.id)
+    );
+
+    const studentRecords = attendanceRecords.filter(
+      r => r.student_id === studentId && relevantSessionIds.has(r.lecture_session_id)
+    );
     
     const dayGroups = {};
     studentRecords.forEach(r => {

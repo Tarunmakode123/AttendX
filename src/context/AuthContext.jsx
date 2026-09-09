@@ -3,7 +3,7 @@ import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
 
 const AuthContext = createContext();
 
-// 8 Realistic Fictional Indian Engineering College Faculty Personas
+// 5 Realistic Faculty Accounts + 1 HOD/Admin Account
 export const DEMO_USERS = [
   {
     id: 'fac-101',
@@ -21,7 +21,7 @@ export const DEMO_USERS = [
     email: 'neha.verma@college.edu',
     role: 'faculty',
     department: 'Computer Science & Engineering',
-    subjects: ['Database Management Systems']
+    subjects: ['Database Management Systems', 'Database Lab']
   },
   {
     id: 'fac-103',
@@ -44,8 +44,8 @@ export const DEMO_USERS = [
   {
     id: 'fac-105',
     faculty_id: 'FAC005',
-    name: 'Prof. Vikram Singh',
-    email: 'vikram.singh@college.edu',
+    name: 'Dr. Arjun Kapoor',
+    email: 'arjun.kapoor@college.edu',
     role: 'faculty',
     department: 'Computer Science & Engineering',
     subjects: ['Machine Learning']
@@ -57,7 +57,7 @@ export const DEMO_USERS = [
     email: 'hod.cs@college.edu',
     role: 'admin',
     department: 'Computer Science & Engineering',
-    subjects: ['All CSE Subjects']
+    subjects: ['Department Head — All CSE Subjects']
   }
 ];
 
@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }) => {
           faculty_id: 'FAC-LIVE',
           name: email.split('@')[0],
           email: email,
-          role: 'faculty',
+          role: email.includes('admin') || email.includes('hod') ? 'admin' : 'faculty',
           department: 'Computer Science & Engineering'
         });
       } else {
