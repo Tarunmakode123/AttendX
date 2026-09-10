@@ -113,6 +113,7 @@ export const AttendanceProvider = ({ children }) => {
         subject: subjectObj,
         period: periodObj,
         date: dateStr,
+        faculty_id: slot.faculty_id,
         room_no: slot.room_no || 'Room 301',
         studentCount: sectionStudents.length,
         isSubmitted: Boolean(existingSession),

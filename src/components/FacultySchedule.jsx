@@ -1,11 +1,11 @@
 import React from 'react';
 import { useAttendance } from '../context/AttendanceContext';
-import { useAuth } from '../context/AuthContext';
-import { Calendar, Clock, BookOpen, Users, CheckCircle2, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { useAuth, DEMO_USERS } from '../context/AuthContext';
+import { Calendar, Clock, BookOpen, Users, CheckCircle2, Lock, ArrowRight, Sparkles, UserCheck } from 'lucide-react';
 
 export const FacultySchedule = ({ onSelectLecture }) => {
   const { getFacultyTodaySchedule } = useAttendance();
-  const { currentUser } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todaySchedule = getFacultyTodaySchedule(currentUser?.id || 'fac-101', todayStr);
@@ -25,13 +25,13 @@ export const FacultySchedule = ({ onSelectLecture }) => {
         <div>
           <div className="flex items-center space-x-2 text-xs font-bold text-brand-600 uppercase tracking-wider mb-1">
             <Calendar className="w-4 h-4 text-brand-500" />
-            <span>Today's Academic Schedule</span>
+            <span>{isAdmin ? "Department Master Overview" : "Today's Academic Schedule"}</span>
           </div>
           <h2 className="text-xl font-extrabold text-slate-900">
-            {currentUser?.name || 'Faculty'}'s Lectures
+            {isAdmin ? "Department Master Schedule (All CSE Classes)" : `${currentUser?.name || 'Faculty'}'s Assigned Lectures`}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            {formattedDate} • {currentUser?.department || 'Computer Science & Engineering'}
+            {formattedDate} • {currentUser?.department || 'Computer Science & Engineering'} {isAdmin && "• (HOD Administrative View)"}
           </p>
         </div>
 
@@ -51,12 +51,13 @@ export const FacultySchedule = ({ onSelectLecture }) => {
       ) : (
         <div className="space-y-4">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
-            Assigned Teaching Slots ({todaySchedule.length})
+            {isAdmin ? `All Department Scheduled Slots (${todaySchedule.length})` : `My Assigned Teaching Slots (${todaySchedule.length})`}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {todaySchedule.map((item) => {
-              const { slotId, class_section, subject, period, date, studentCount, isSubmitted } = item;
+              const { slotId, class_section, subject, period, date, faculty_id, studentCount, isSubmitted } = item;
+              const assignedFaculty = DEMO_USERS.find(u => u.id === faculty_id);
 
               return (
                 <div
@@ -90,13 +91,19 @@ export const FacultySchedule = ({ onSelectLecture }) => {
                         <span>•</span>
                         <span className="flex items-center space-x-1">
                           <Users className="w-3 h-3 text-slate-400" />
-                          <span>{studentCount} Enrolled Students</span>
+                          <span>{studentCount} Enrolled</span>
                         </span>
                       </div>
                     </div>
+
+                    {/* Assigned Faculty Badge (Crucial for HOD View) */}
+                    <div className="pt-1 flex items-center space-x-1.5 text-xs font-semibold text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <UserCheck className="w-4 h-4 text-brand-500 flex-shrink-0" />
+                      <span>Assigned Faculty: <strong className="text-slate-900">{assignedFaculty?.name || 'Faculty Member'}</strong></span>
+                    </div>
                   </div>
 
-                  {/* Take Attendance Button */}
+                  {/* Take Attendance / View Status Button */}
                   <div className="pt-2 border-t border-slate-100">
                     {isSubmitted ? (
                       <div className="flex items-center justify-between text-xs font-bold text-slate-500 bg-slate-100 p-2.5 rounded-xl border border-slate-200">
@@ -117,7 +124,7 @@ export const FacultySchedule = ({ onSelectLecture }) => {
                         className="w-full py-3 px-4 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow-md shadow-brand-500/20 flex items-center justify-center space-x-2 transition-all focus:ring-2 focus:ring-brand-400 focus:outline-none"
                       >
                         <BookOpen className="w-4 h-4" />
-                        <span>[ TAKE ATTENDANCE ]</span>
+                        <span>{isAdmin ? "[ VIEW / MARK ATTENDANCE ]" : "[ TAKE ATTENDANCE ]"}</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
